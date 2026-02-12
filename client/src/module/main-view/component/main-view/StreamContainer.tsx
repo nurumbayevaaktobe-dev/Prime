@@ -1,5 +1,5 @@
 import { GridItem, Stack, Text } from "@chakra-ui/react";
-import React from "react";
+import React, { useRef } from "react";
 import {
   MediaVideoStreamType,
   DisplayVideoStreamType,
@@ -7,6 +7,9 @@ import {
 } from "../../../members/types";
 import { StreamPlayer } from "../stream-player/StreamPlayer";
 import { useMember } from "../../../members/MemberServiceContext";
+import { useActivityDetection } from "../../../../hooks/useActivityDetection";
+import ActivityBadge from "../../../../components/ActivityBadge";
+
 interface StreamContainerProps {
   stream: MediaVideoStreamType | DisplayVideoStreamType;
   index?: number;
@@ -21,6 +24,17 @@ export const StreamContainer = (props: StreamContainerProps) => {
   const member = getMember(stream.memberId);
   const isLocal = member?.isLocal;
   const aspectRatio = 16 / 9;
+
+  // Video ref for activity detection
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Only enable activity detection for non-local screen shares (display streams)
+  const shouldDetectActivity = !isWebCamStream && !isLocal && stream.isEnabled;
+  const activity = useActivityDetection(
+    videoRef,
+    stream.memberId,
+    { enabled: shouldDetectActivity }
+  );
 
   return (
     <GridItem
@@ -50,10 +64,14 @@ export const StreamContainer = (props: StreamContainerProps) => {
       maxHeight={"100%"}
       aspectRatio={aspectRatio}
     >
+      {/* Activity Badge - only for screen shares */}
+      {shouldDetectActivity && <ActivityBadge activity={activity} />}
+
       <StreamPlayer
         stream={stream.stream}
         name={member?.name!}
         isEnabled={stream.isEnabled}
+        videoRef={videoRef}
       />
 
       <Stack
