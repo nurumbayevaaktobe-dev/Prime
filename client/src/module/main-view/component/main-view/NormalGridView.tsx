@@ -6,12 +6,16 @@ import {
   MediaVideoStreamType,
 } from "../../../members/types";
 import { useMember } from "../../../members/MemberServiceContext";
+
 interface NormalGridViewProps {
   handlePin: (pinnedStream: any) => void;
+  selectedStudent?: { id: string; name: string } | null;
+  onSelectStudent?: (student: { id: string; name: string }) => void;
+  videoRefs?: Record<string, React.RefObject<HTMLVideoElement>>;
 }
 
 export const NormalGridView = (props: NormalGridViewProps) => {
-    const { handlePin } = props;
+    const { handlePin, selectedStudent, onSelectStudent, videoRefs } = props;
     const { remoteStreams } = useMember();
 
   const totalStreams =
@@ -35,22 +39,30 @@ export const NormalGridView = (props: NormalGridViewProps) => {
     >
       {remoteStreams.video.map((video: MediaVideoStreamType, index: number) => (
         <StreamContainer
+          key={`video-${video.memberId}-${index}`}
           stream={video}
           index={index}
           isWebCamStream={true}
           canPinned={canPinned}
           onPinned={handlePin}
+          isSelected={selectedStudent?.id === video.memberId}
+          onSelect={onSelectStudent}
+          videoRef={videoRefs?.[video.memberId]}
         />
       ))}
       {remoteStreams.display
         .filter((display: DisplayVideoStreamType) => display.isEnabled)
         .map((display: DisplayVideoStreamType, index: number) => (
           <StreamContainer
+            key={`display-${display.memberId}-${index}`}
             stream={display}
             index={index}
             isWebCamStream={false}
             canPinned={canPinned}
             onPinned={handlePin}
+            isSelected={selectedStudent?.id === display.memberId}
+            onSelect={onSelectStudent}
+            videoRef={videoRefs?.[display.memberId]}
           />
         ))}
     </Grid>

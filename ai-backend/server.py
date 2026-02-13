@@ -13,6 +13,8 @@ import os
 from functools import lru_cache
 import time
 from datetime import datetime
+import re
+import json
 
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:3000", "http://localhost:5173"])
@@ -238,6 +240,181 @@ Keep it professional, specific, and under 400 words."""
     except Exception as e:
         print(f"Error generating summary: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/analyze-screenshot', methods=['POST'])
+def analyze_screenshot():
+    """
+    Comprehensive screenshot analysis with dual purpose:
+    1. Violation detection (games, ChatGPT, YouTube, etc.)
+    2. Code review with syntax error detection
+
+    Request body:
+    {
+        "image": "base64_encoded_image",
+        "studentName": "student_name",
+        "timestamp": "ISO timestamp"
+    }
+
+    Response:
+    {
+        "violations": [...],
+        "codeReview": {...},
+        "overallStatus": "...",
+        "severity": "critical|warning|info|success",
+        "confidence": 0-100,
+        "recommendations": [...],
+        "timestamp": "...",
+        "studentName": "...",
+        "analysisTimeMs": 1234,
+        "icon": "emoji"
+    }
+    """
+    start_time = time.time()
+
+    try:
+        data = request.json
+        image_b64 = data.get('image')
+        student_name = data.get('studentName', 'Unknown')
+        timestamp = data.get('timestamp', datetime.now().isoformat())
+
+        if not image_b64:
+            return jsonify({'error': 'No image provided'}), 400
+
+        if not GEMINI_API_KEY:
+            # Demo response for testing without API key
+            return jsonify({
+                'violations': [],
+                'codeReview': {
+                    'hasCode': True,
+                    'language': 'Python',
+                    'editor': 'VS Code',
+                    'syntaxErrors': [],
+                    'warnings': []
+                },
+                'overallStatus': 'Demo Mode - On Task',
+                'severity': 'info',
+                'confidence': 50,
+                'recommendations': [
+                    'Set GEMINI_API_KEY for real AI analysis',
+                    'This is a demo response'
+                ],
+                'timestamp': timestamp,
+                'studentName': student_name,
+                'analysisTimeMs': int((time.time() - start_time) * 1000),
+                'icon': 'ℹ️'
+            })
+
+        # Decode image
+        image_bytes = base64.b64decode(image_b64)
+        img = Image.open(io.BytesIO(image_bytes))
+
+        # Comprehensive AI Prompt for dual-purpose analysis
+        prompt = """You are an expert teaching assistant analyzing a student's computer screen.
+Perform TWO analysis tasks:
+
+## TASK 1: VIOLATION CHECK
+Check if the student is doing any of these PROHIBITED activities:
+- Playing games (any game, including web games, Steam, etc.)
+- Using ChatGPT or other AI chatbots (Claude, Gemini, Copilot Chat, etc.)
+- Watching YouTube videos (not tutorials)
+- Using social media (Instagram, TikTok, Twitter, Facebook, Discord for chat)
+- Online shopping
+- Reading non-educational content
+
+## TASK 2: CODE REVIEW (if applicable)
+If you see a code editor (VS Code, PyCharm, Sublime, etc.) or code on screen:
+- Identify the programming language
+- Check for syntax errors (missing brackets, semicolons, wrong indentation, etc.)
+- Note any obvious logic issues
+- Identify the type of code editor
+
+## OUTPUT FORMAT (JSON only, no markdown):
+{
+  "violations": [
+    {
+      "type": "Game Detected" | "ChatGPT Usage" | "YouTube" | "Social Media" | "Other",
+      "description": "Specific description of what you see",
+      "evidence": "What makes you think this (window title, UI elements, etc.)"
+    }
+  ],
+  "codeReview": {
+    "hasCode": true/false,
+    "language": "Python" | "JavaScript" | "Java" | etc. | null,
+    "editor": "VS Code" | "PyCharm" | etc. | null,
+    "syntaxErrors": [
+      {
+        "line": line_number (best guess) or null,
+        "type": "Missing bracket" | "Syntax error" | "Indentation error" | etc.,
+        "description": "Detailed description",
+        "suggestion": "How to fix it"
+      }
+    ],
+    "warnings": ["Warning 1", "Warning 2"] (best practices, style issues)
+  },
+  "overallStatus": "On Task - Coding" | "Violation - Game" | "Violation - ChatGPT" | "Off Task" | "Idle",
+  "severity": "success" | "info" | "warning" | "critical",
+  "confidence": 0-100 (your confidence in this analysis),
+  "recommendations": ["Recommendation 1", "Recommendation 2"] (what teacher should do)
+}
+
+IMPORTANT RULES:
+1. If NO violations found and NO code visible:
+   violations = [], codeReview.hasCode = false, overallStatus = "On Task"
+2. If code visible but NO syntax errors:
+   syntaxErrors = [], include positive note in recommendations
+3. If using ChatGPT for coding help:
+   Add to violations AND note in recommendations
+4. Be specific! Don't say "possible game" - identify what you see
+5. Confidence should be honest (60-70% if unclear, 90-95% if obvious)
+6. For syntax errors, be VERY specific about the problem and solution
+
+Analyze the screenshot now and return ONLY the JSON object, no other text."""
+
+        # Call Gemini Vision API
+        print(f"[{datetime.now()}] Analyzing screenshot for {student_name}...")
+        response = model.generate_content([prompt, img])
+        response_text = response.text.strip()
+
+        # Extract JSON from response (handle markdown code blocks)
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if not json_match:
+            raise ValueError("No JSON found in AI response")
+
+        analysis = json.loads(json_match.group())
+
+        # Add metadata
+        analysis['timestamp'] = timestamp
+        analysis['studentName'] = student_name
+        analysis['analysisTimeMs'] = int((time.time() - start_time) * 1000)
+
+        # Add appropriate icon based on severity
+        icons = {
+            'critical': '🚨',
+            'warning': '⚠️',
+            'info': 'ℹ️',
+            'success': '✅'
+        }
+        analysis['icon'] = icons.get(analysis.get('severity', 'info'), 'ℹ️')
+
+        print(f"[{datetime.now()}] Analysis complete for {student_name}: {analysis.get('overallStatus')}")
+
+        return jsonify(analysis)
+
+    except json.JSONDecodeError as e:
+        print(f"JSON parsing error: {str(e)}")
+        print(f"AI Response: {response_text if 'response_text' in locals() else 'N/A'}")
+        return jsonify({
+            'error': 'Invalid AI response format',
+            'rawResponse': response_text[:500] if 'response_text' in locals() else 'N/A'
+        }), 500
+
+    except Exception as e:
+        print(f"Error in analyze_screenshot: {str(e)}")
+        return jsonify({
+            'error': str(e),
+            'timestamp': timestamp if 'timestamp' in locals() else datetime.now().isoformat()
+        }), 500
 
 
 def format_student_activities(students):
