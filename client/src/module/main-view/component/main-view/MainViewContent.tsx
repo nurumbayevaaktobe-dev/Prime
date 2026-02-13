@@ -1,5 +1,5 @@
 import { Flex, Box } from "@chakra-ui/react";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useRef, useEffect } from "react";
 import { useMember } from "../../../members/MemberServiceContext";
 import { PinnedStreamType } from "../../../members/types";
 import AudioPlayers from "../audio-element/AudioPlayer";
@@ -13,6 +13,19 @@ export const MainViewContent: React.FC = () => {
   const [pinnedStream, setPinnedStream] = useState<PinnedStreamType | null>();
   const [gridSize, setGridSize] = useState(3);
   const [showOnlyOffTask, setShowOnlyOffTask] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<{ id: string; name: string } | null>(null);
+
+  // Create refs map for all student videos
+  const videoRefs = useRef<Record<string, React.RefObject<HTMLVideoElement>>>({});
+
+  // Initialize refs for each member
+  useEffect(() => {
+    members.forEach(member => {
+      if (!videoRefs.current[member.id]) {
+        videoRefs.current[member.id] = { current: null };
+      }
+    });
+  }, [members]);
 
   const handlePin = useCallback(
     (pinStream: PinnedStreamType) => {
@@ -66,6 +79,8 @@ export const MainViewContent: React.FC = () => {
       {/* Quick Actions Panel */}
       <QuickActionsPanel
         students={studentsData}
+        selectedStudent={selectedStudent}
+        videoRefs={videoRefs.current}
         gridSize={gridSize}
         onGridSizeChange={setGridSize}
         showOnlyOffTask={showOnlyOffTask}
@@ -78,7 +93,12 @@ export const MainViewContent: React.FC = () => {
         {isPinned && pinnedStream ? (
           <PinnedContainer pinnedStream={pinnedStream} handlePin={handlePin} />
         ) : (
-          <NormalGridView handlePin={handlePin} />
+          <NormalGridView
+            handlePin={handlePin}
+            selectedStudent={selectedStudent}
+            onSelectStudent={setSelectedStudent}
+            videoRefs={videoRefs.current}
+          />
         )}
       </Flex>
 
